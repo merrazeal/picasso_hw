@@ -1,0 +1,106 @@
+version: '3.9'
+
+
+x-base: &base
+  restart: unless-stopped
+  env_file: ./.env
+
+x-hc-interval: &hc-interval
+  interval: 2s
+  retries: 10
+  timeout: 10s
+
+x-python-build: &python-build
+  build: ./backend/.
+
+x-celery-base: &celery-base
+  <<: [*base, *python-build]
+
+
+services:
+
+  proxy:
+    <<: *base
+    image: nginx:1.25
+    volumes:
+      - ./static:/static:ro
+      - ./media:/media:ro
+      - ./nginx/proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/backend.conf:/etc/nginx/sites-available/backend.conf
+    ports:
+      - "8000:80"
+    expose:
+      - "80"
+    depends_on:
+      - backend
+
+  postgres:
+    <<: *base
+    image: postgres:15.0-alpine
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backup.sql:/docker-entrypoint-initdb.d/dump.sql:ro
+    expose:
+      - "5432"
+    ports:
+    - "5432:5432"
+    healthcheck:
+      <<: *hc-interval
+      test: ["CMD-SHELL", "pg_isready -d picasso_db -U app"]
+
+  rabbitmq:
+    <<: *base
+    image: rabbitmq:3.13-rc-management-alpine
+    hostname: rabbitmq
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    expose:
+      - "5672"
+    ports:
+      - "5672:5672"
+    healthcheck:
+      <<: *hc-interval
+      test: ["CMD-SHELL", "rabbitmq-diagnostics check_port_connectivity"]
+
+  redis:
+    <<: *base
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    expose:
+      - "6379"
+    ports:
+      - "6379:6379"
+    healthcheck:
+      <<: *hc-interval
+      test: ["CMD-SHELL", "redis-cli ping"]
+
+  backend:
+    <<: [*base, *python-build]
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+    command: ["sh", "entrypoint.sh"]
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  
+  celery-worker-1:
+    <<: *celery-base
+    command: ["python", "-m", "celery", "-A", "config", "worker"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:
