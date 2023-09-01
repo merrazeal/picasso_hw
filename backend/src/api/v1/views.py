@@ -1,7 +1,7 @@
 from rest_framework.generics import ListAPIView, CreateAPIView
 
 from files.models import File
-from .serializers import FileSerializer
+from .serializers import FileSerializer, FileUnHiddenSerializer
 from .tasks import render_file
 
 
@@ -15,5 +15,5 @@ class UploadFileView(CreateAPIView):
 
 
 class FileListView(ListAPIView):
-    serializer_class = FileSerializer
+    serializer_class = FileUnHiddenSerializer
     queryset = File.objects.all()

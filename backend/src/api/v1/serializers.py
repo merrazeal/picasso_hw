@@ -7,3 +7,8 @@ class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
         fields = ("file", "uploaded_at")
+
+
+class FileUnHiddenSerializer(FileSerializer):
+    class Meta(FileSerializer.Meta):
+        fields = FileSerializer.Meta.fields + ('processed', )
